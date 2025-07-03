@@ -1,0 +1,13 @@
+[Unit]
+Description=NFS Server Mount
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/mkdir -p /nfs/server
+ExecStart=/usr/sbin/exportfs -o rw,sync,no_subtree_check *(rw,sync,no_subtree_check)
+/bin/mount -t nfsd nfsd /proc/fs/nfsd
+
+[Install]
+WantedBy=multi-user.target

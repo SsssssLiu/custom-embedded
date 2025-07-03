@@ -1,0 +1,13 @@
+# File: nfs-client.service
+[Unit]
+Description=NFS Client Mount
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=/bin/mkdir -p /nfs/client
+ExecStart=/bin/mount -v -t nfs 192.168.1.0:/nfs/server /nfs/client
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
