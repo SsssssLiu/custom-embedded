@@ -4,7 +4,7 @@ LICENSE = "CLOSED"
 SRC_URI += "file://nfs-mount-client.service"
 SRC_URI += "file://nfs-mount-server.service"
 
-inherit cmake systemd pkgconfig
+inherit systemd pkgconfig
 
 SYSTEMD_SERVICE:${PN} = "nfs-mount-client.service nfs-mount-server.service"
 
