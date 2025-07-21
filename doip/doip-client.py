@@ -39,6 +39,64 @@ class DoIPClient:
         response = self.sock.recv(2048)
         return response
 
+    def send_file(self, des_ip: str, file_path: str) -> bool:
+        """
+        Send a file using UDS services sequence:
+        1. DiagnosticSessionControl (0x10) to switch to programming session
+        2. SecurityAccess (0x27) for authentication
+        3. RequestDownload (0x34) to initiate transfer
+        4. TransferData (0x36) to send file chunks
+        5. TransferExit (0x37) to complete transfer
+        """
+        try:
+            # Read file content
+            with open(file_path, 'rb') as f:
+                file_data = f.read()
+                file_size = len(file_data)
+
+            # Step 1: Switch to programming session
+            prog_session = self.send_diagnostic_message(0x0E00, 0x0E80, b'\x10\x02')
+            if prog_session[0] != 0x50:  # Positive response
+                raise Exception("Failed to enter programming session")
+
+            # Step 2: Security Access (simplified - should implement proper seed/key)
+            sec_access = self.send_diagnostic_message(0x0E00, 0x0E80, b'\x27\x01')
+            if sec_access[0] != 0x67:  # Positive response
+                raise Exception("Security access denied")
+
+            # Step 3: Request Download
+            # Format: 0x34 + Data Format ID + Address and Length Format ID + Memory Address + Memory Size
+            req_download = self.send_diagnostic_message(0x0E00, 0x0E80, 
+                b'\x34\x00\x44' + file_size.to_bytes(4, 'big'))
+            if req_download[0] != 0x74:  # Positive response
+                raise Exception("Download request failed")
+
+            # Get max block size from response (assuming it's in the last 2 bytes)
+            block_size = min(0x800, int.from_bytes(req_download[-2:], 'big'))
+
+            # Step 4: Transfer Data in chunks
+            block_counter = 1
+            for i in range(0, file_size, block_size):
+                chunk = file_data[i:i + block_size]
+                transfer_msg = b'\x36' + block_counter.to_bytes(1, 'big') + chunk
+                response = self.send_diagnostic_message(0x0E00, 0x0E80, transfer_msg)
+                
+                if response[0] != 0x76:  # Positive response
+                    raise Exception(f"Transfer failed at block {block_counter}")
+                
+                block_counter = (block_counter + 1) % 0xFF
+
+            # Step 5: Transfer Exit
+            exit_msg = self.send_diagnostic_message(0x0E00, 0x0E80, b'\x37')
+            if exit_msg[0] != 0x77:  # Positive response
+                raise Exception("Transfer exit failed")
+
+            return True
+
+        except Exception as e:
+            print(f"File transfer failed: {str(e)}")
+            return False
+
 def main():
     client = DoIPClient("192.168.1.100")
     try:
