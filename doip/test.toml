@@ -1,0 +1,6 @@
+physical_addr = 0xabcd
+physical_addresses = [0xabcd]
+logical_addresses = [0xcdef]
+allowed_addresses = [
+    {addr = 0xabcd, ma = 0xef}
+]
