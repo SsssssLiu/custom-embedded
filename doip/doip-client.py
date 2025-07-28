@@ -19,7 +19,10 @@ class DoIPClient:
             self.sock = None
             
     def send_diagnostic_message(self, source_addr, target_addr, user_data):
-        """Send a diagnostic message to the DoIP server"""
+        """
+        Send a diagnostic message to the DoIP server
+        Returns: List of responses [doip_ack, uds_response]. doip_ack may be None for single-response messages
+        """
         if not self.sock:
             raise ConnectionError("Not connected")
             
@@ -28,16 +31,29 @@ class DoIPClient:
         payload_type = 0x8001  # Diagnostic message
         payload_length = len(user_data) + 4  # 4 bytes for source and target addresses
         
-        # Consruct the packet
+        # Construct the packet
         header = struct.pack("!BBHL", protocol_version, 0x00, payload_type, payload_length)
         addresses = struct.pack("!HH", source_addr, target_addr)
         
         # Send data
         self.sock.send(header + addresses + user_data)
         
-        # Receive response
+        # Try to receive DoIP ACK first (non-blocking)
+        self.sock.setblocking(False)
+        try:
+            ack = self.sock.recv(8)  # DoIP header is 8 bytes
+            if len(ack) >= 8:
+                ack_type = struct.unpack("!L", ack[4:8])[0]
+                if ack_type != 0x8002:  # Not a DoIP ACK
+                    ack = None
+        except socket.error:
+            ack = None
+    
+        # Switch back to blocking mode for UDS response
+        self.sock.setblocking(True)
         response = self.sock.recv(2048)
-        return response
+        
+        return [ack, response]
 
     def send_file(self, des_ip: str, file_path: str) -> bool:
         """
@@ -55,13 +71,13 @@ class DoIPClient:
                 file_size = len(file_data)
 
             # Step 1: Switch to programming session
-            prog_session = self.send_diagnostic_message(0x0E00, 0x0E80, b'\x10\x02')
-            if prog_session[0] != 0x50:  # Positive response
+            responses = self.send_diagnostic_message(0x0E00, 0x0E80, b'\x10\x02')
+            if responses[1][12] != 0x50:  # Check UDS response
                 raise Exception("Failed to enter programming session")
 
-            # Step 2: Security Access (simplified - should implement proper seed/key)
-            sec_access = self.send_diagnostic_message(0x0E00, 0x0E80, b'\x27\x01')
-            if sec_access[0] != 0x67:  # Positive response
+            # Step 2: Security Access
+            responses = self.send_diagnostic_message(0x0E00, 0x0E80, b'\x27\x01')
+            if responses[1][12] != 0x67:
                 raise Exception("Security access denied")
 
             # Step 3: Request Download
