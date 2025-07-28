@@ -38,22 +38,22 @@ class DoIPClient:
         # Send data
         self.sock.send(header + addresses + user_data)
         
-        # Try to receive DoIP ACK first (non-blocking)
-        self.sock.setblocking(False)
-        try:
-            ack = self.sock.recv(8)  # DoIP header is 8 bytes
-            if len(ack) >= 8:
-                ack_type = struct.unpack("!L", ack[4:8])[0]
-                if ack_type != 0x8002:  # Not a DoIP ACK
-                    ack = None
-        except socket.error:
-            ack = None
-    
-        # Switch back to blocking mode for UDS response
+        # Always use blocking mode for receiving responses
         self.sock.setblocking(True)
-        response = self.sock.recv(2048)
         
-        return [ack, response]
+        # First message could be either DoIP ACK or direct UDS response
+        first_response = self.sock.recv(2048)
+        
+        if len(first_response) >= 8:
+            response_type = struct.unpack("!L", first_response[4:8])[0]
+            if response_type == 0x8002:  # It's a DoIP ACK
+                # Get the actual UDS response
+                uds_response = self.sock.recv(2048)
+                return [first_response, uds_response]
+            else:  # It's a direct UDS response
+                return [None, first_response]
+                
+        raise Exception("Invalid response received")
 
     def send_file(self, des_ip: str, file_path: str) -> bool:
         """
